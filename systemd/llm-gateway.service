@@ -1,0 +1,12 @@
+[Unit]
+Description=Ollama LLM Gateway API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/llm-gateway/server
+ExecStart=/usr/bin/python3 gateway.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

@@ -61,18 +61,35 @@ sudo apt update
 sudo apt install -y python3 python3-pip
 pip3 install flask requests psutil
 
-# Install systemd services
 echo "[*] Installing systemd services..."
 
-sudo cp systemd/llm-gateway.service /etc/systemd/system/
-sudo cp systemd/llm-dashboard.service /etc/systemd/system/
+# Copy service units
+if [ -d "/etc/systemd/system" ]; then
+    sudo cp systemd/llm-gateway.service /etc/systemd/system/
+    sudo cp systemd/llm-dashboard.service /etc/systemd/system/
+else
+    echo "[!] /etc/systemd/system not found. Skipping service installation."
+fi
 
-sudo systemctl daemon-reload
-sudo systemctl enable llm-gateway.service
-sudo systemctl enable llm-dashboard.service
+# Only attempt to enable/start services if systemd is the init system
+if pid1_name=$(ps -p 1 -o comm= 2>/dev/null) && [ "$pid1_name" = "systemd" ]; then
+    echo "[✓] Systemd detected (PID 1 = systemd)."
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now llm-gateway.service || true
+    sudo systemctl enable --now llm-dashboard.service || true
 
-sudo systemctl start llm-gateway.service
-sudo systemctl start llm-dashboard.service
+    echo "[*] Service status (brief):"
+    sudo systemctl status llm-gateway.service --no-pager || true
+    sudo systemctl status llm-dashboard.service --no-pager || true
+else
+    echo "[!] No systemd init system detected (PID 1 = ${pid1_name:-unknown})."
+    echo "[!] You may be in a container or a system without systemd."
+    echo "[!] The service files were copied to /etc/systemd/system, but systemctl cannot manage services here."
+    echo "[!] If you are on a host with systemd, run this installer on the host, not inside a container." 
+    echo "[!] Alternatively, to run the servers manually, start them with:"
+    echo "    sudo python3 /opt/llm-gateway/server/gateway.py &"
+    echo "    sudo python3 /opt/llm-gateway/server/dashboard.py &"
+fi
 
 echo "-----------------------------------"
 echo " LLM Gateway Installed Successfully "

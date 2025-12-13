@@ -1,12 +1,14 @@
 [Unit]
-Description=LLM Dashboard Web UI
+Description=LLM Gateway Dashboard
 After=network.target
 
 [Service]
 Type=simple
 WorkingDirectory=/opt/llm-gateway/server
-ExecStart=/usr/bin/python3 dashboard.py
+ExecStart=/opt/llm-gateway/venv/bin/python dashboard.py
 Restart=always
+User=root
+Environment=PYTHONUNBUFFERED=1
 
 [Install]
 WantedBy=multi-user.target

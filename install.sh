@@ -58,8 +58,20 @@ echo "[✓] Config saved to server/config.json"
 # Install requirements
 echo "[*] Installing Python dependencies..."
 sudo apt update
-sudo apt install -y python3 python3-pip
-pip3 install flask requests psutil
+
+echo "[*] Installing Python dependencies (virtualenv)..."
+
+sudo apt update
+sudo apt install -y python3 python3-venv python3-pip
+
+if [ ! -d "venv" ]; then
+    python3 -m venv venv
+fi
+
+source venv/bin/activate
+pip install --upgrade pip
+pip install flask requests psutil
+deactivate
 
 echo "[*] Installing systemd services..."
 

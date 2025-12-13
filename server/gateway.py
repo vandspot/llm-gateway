@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response, stream_with_context
 import requests, json
 import logging
 import sys
@@ -51,16 +51,31 @@ if PROXY_MODE == "socks5":
     }
 
 @app.before_request
-def check_api_key():
-    if request.path in ["/health"]:
+def log_everything():
+    try:
+        raw = request.get_data(as_text=True)
+    except Exception:
+        raw = "<unreadable>"
+
+    log.info(
+        f"INCOMING "
+        f"ip={request.remote_addr} "
+        f"path={request.path} "
+        f"content-type={request.content_type} "
+        f"len={len(raw)}"
+    )
+    if request.method != "POST":
+        return
+    if request.path in ["/ping"]:
         return
     if API_KEY and request.headers.get("X-API-Key") != API_KEY:
         return jsonify({"error": "Unauthorized"}), 401
 
-@app.route("/api/chat", methods=["POST"])
+@app.route("/", methods=["POST"])
 def chat():
     start = time()
     data = request.json or {}
+    is_stream = data.get("stream", False) is True
 
     client_ip = request.remote_addr
     model = data.get("model", "unknown")
@@ -74,8 +89,12 @@ def chat():
         return jsonify({"error": "Invalid request format"}), 400
 
     log.info(f"REQ from {client_ip} model={model} endpoint={endpoint}")
-
-    resp = session.post(f"{OLLAMA_URL}{endpoint}", json=data)
+    
+    resp = session.post(
+        f"{OLLAMA_URL}{endpoint}",
+        json=data,
+        stream=is_stream
+    )
     duration = round((time() - start) * 1000)
 
     log.info(f"RESP {resp.status_code} model={model} {duration}ms")
@@ -89,7 +108,19 @@ def chat():
     conn.commit()
     conn.close()
 
-    return resp.text, resp.status_code, {"Content-Type": "application/json"}
+    if is_stream:
+        def generate():
+            for line in resp.iter_lines():
+                if line:
+                    yield line + b"\n"
+
+        return Response(
+            stream_with_context(generate()),
+            status=resp.status_code,
+            content_type="application/json"
+        )
+    else:
+        return resp.text, resp.status_code, {"Content-Type": "application/json"}
 
 @app.route("/api/requests")
 def api_requests():
@@ -114,10 +145,10 @@ def api_requests():
 
     return jsonify({"rows": rows})
 
-
-@app.route("/health")
-def health():
-    return {"ok": True}
+    
+@app.route("/ping",methods=["GET","POST"])
+def ping():
+    return {"pong": True}
 
 
 def init_db():

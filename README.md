@@ -14,7 +14,7 @@ A full local gateway + web dashboard for interacting with Ollama from mobile app
 ## Installation
 
 ```bash
-git clone https://github.com/YOURNAME/llm-gateway
+git clone https://github.com/vandspot/llm-gateway
 cd llm-gateway
 chmod +x install.sh
 sudo ./install.sh

@@ -25,8 +25,31 @@ function ctrl(action) {
     }).then(refreshStatus);
 }
 
+async function loadRequests() {
+  try {
+    const res = await fetch('/api/requests');
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("API error:", text);
+      return;
+    }
+
+    const data = await res.json();
+
+    const el = document.getElementById('logs');
+    el.textContent = data.rows.map(r =>
+      `${r.time} | ${r.ip} | ${r.model} | ${r.status} | ${r.latency}ms`
+    ).join('\n');
+
+  } catch (e) {
+    console.error("Fetch failed:", e);
+  }
+}
+
+setInterval(loadRequests, 2000);
 setInterval(refreshStatus, 3000);
-setInterval(refreshLogs, 5000);
 
 refreshStatus();
-refreshLogs();
+loadRequests();
+

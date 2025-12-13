@@ -1,5 +1,12 @@
-from flask import Flask, send_from_directory, request
+from flask import Flask, send_from_directory, request, jsonify
 import subprocess, json, psutil, os
+import sqlite3
+
+cfg = json.load(open("config.json"))
+API_KEY = cfg.get("api_key", "")
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "gateway.db")
 
 cfg = json.load(open("config.json"))
 GW_PORT = cfg["port"]
@@ -40,5 +47,36 @@ def update_config():
     cfg.update(new_cfg)
     json.dump(cfg, open("config.json", "w"), indent=4)
     return {"updated": True}
+
+@app.route("/api/requests")
+def api_requests():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+
+        c.execute("""
+            SELECT ts, ip, model, status, latency_ms
+            FROM requests
+            ORDER BY ts DESC
+            LIMIT 50
+        """)
+
+        rows = c.fetchall()
+        conn.close()
+
+        return jsonify({
+            "rows": [
+                {
+                    "time": r[0],
+                    "ip": r[1],
+                    "model": r[2],
+                    "status": r[3],
+                    "latency": r[4]
+                } for r in rows
+            ]
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 app.run(host="0.0.0.0", port=DASH_PORT)

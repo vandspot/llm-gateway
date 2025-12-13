@@ -1,0 +1,6 @@
+{
+  "port": 3000,
+  "api_key": "abc123",
+  "proxy_mode": "none",
+  "socks_addr": ""
+}

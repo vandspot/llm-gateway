@@ -5,6 +5,7 @@ import logging
 import sys
 from time import time
 import sqlite3
+from datetime import datetime, timezone
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "gateway.db")
@@ -150,6 +151,111 @@ def api_requests():
 def ping():
     return {"pong": True}
 
+@app.route("/notifications", methods=["GET"])
+def get_notifications():
+    log.info("=== NOTIFICATIONS ENDPOINT CALLED ===")
+    
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+
+    last_check = request.headers.get("Last-Check")
+    log.info(f"Last-Check header value: '{last_check}'")
+
+    if last_check:
+        log.info(f"Processing Last-Check: {last_check}")
+        try:
+            last_dt = datetime.fromisoformat(last_check)
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=timezone.utc)
+            else:
+                last_dt = last_dt.astimezone(timezone.utc)
+
+            # Changed from > to >= to include notifications at exact timestamp
+            formatted_time = last_dt.strftime("%Y-%m-%d %H:%M:%S")
+            log.info(f"DEBUG: Querying notifications WHERE ts >= '{formatted_time}'")
+            log.info(f"DEBUG: Original Last-Check header: {last_check}")
+            log.info(f"DEBUG: Parsed datetime: {last_dt}")
+            
+            c.execute("""
+                SELECT id, from_user, to_user, title, message, ts
+                FROM notifications
+                WHERE datetime(ts) >= datetime(?)
+                ORDER BY ts ASC
+            """, (formatted_time,))
+
+        except Exception as e:
+            log.error(f"Last-Check parse failed: {e}")
+            c.execute("""
+                SELECT id, from_user, to_user, title, message, ts
+                FROM notifications
+                ORDER BY ts ASC
+            """)
+    else:
+        log.info("No Last-Check header, returning all notifications")
+        c.execute("""
+            SELECT id, from_user, to_user, title, message, ts
+            FROM notifications
+            ORDER BY ts ASC
+        """)
+
+    rows = c.fetchall()
+    log.info(f"DEBUG: Found {len(rows)} notifications")
+    if rows:
+        log.info(f"DEBUG: First row: {rows[0]}")
+    conn.close()
+
+    notifications_list = [
+        {
+            "id": r[0],
+            "from": r[1],
+            "to": r[2],
+            "title": r[3],
+            "message": r[4],
+            "timestamp": r[5],
+        }
+        for r in rows
+    ]
+    
+    log.info(f"DEBUG: Built {len(notifications_list)} notification objects")
+    if notifications_list:
+        log.info(f"DEBUG: First notification object: {notifications_list[0]}")
+
+    return {
+        "notifications": notifications_list,
+        "server_time": datetime.now(timezone.utc).isoformat()
+    }
+
+
+@app.route("/notifications/send", methods=["POST"])
+def send_notification():
+    data = request.json or {}
+
+    title = data.get("title")
+    message = data.get("message")
+    from_user = data.get("from")
+    to_user = data.get("to")
+
+    if not title or not message:
+        return jsonify({"error": "Missing required fields"}), 400
+
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        INSERT INTO notifications (from_user, to_user, title, message)
+        VALUES (?, ?, ?, ?)
+    """, (from_user, to_user, title, message))
+    conn.commit()
+    notif_id = c.lastrowid
+    conn.close()
+
+    log.info(f"NOTIF #{notif_id} {title}")
+
+    return {
+        "ok": True,
+        "id": notif_id
+    }
+
+
 
 def init_db():
     log.info(f"Initializing DB at {DB_PATH}")
@@ -164,6 +270,18 @@ def init_db():
             endpoint TEXT,
             status INTEGER,
             latency_ms INTEGER
+        )
+    """)
+    
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            from_user TEXT,
+            to_user TEXT,
+            title TEXT NOT NULL,
+            message TEXT NOT NULL,
+            ts DATETIME DEFAULT CURRENT_TIMESTAMP,
+            delivered INTEGER DEFAULT 0
         )
     """)
     conn.commit()
